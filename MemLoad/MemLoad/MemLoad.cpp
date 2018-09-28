@@ -3,17 +3,22 @@
 
 using namespace std;
 
-typedef BOOL(APIENTRY *DLLENTRY)(HMODULE hModule,ULONG ul_reason_for_call,LPVOID lpReserved);
+typedef BOOL(APIENTRY *DLLENTRY)(HMODULE hModule,ULONG_PTR ul_reason_for_call,LPVOID lpReserved);
 typedef VOID(WINAPI *MSG_CALL)();
 
-ULONG TurnRvaIntoRaw(PIMAGE_NT_HEADERS temp, ULONG_PTR Rva)
+typedef struct BASE_RELOCATION_ENTRY {
+	USHORT Offset : 12;
+	USHORT Type : 4;
+} BASE_RELOCATION_ENTRY, *PBASE_RELOCATION_ENTRY;
+
+ULONG_PTR TurnRvaIntoRaw(PIMAGE_NT_HEADERS temp, ULONG_PTR Rva)
 {
-	ULONG NumbersOfSections = temp->FileHeader.NumberOfSections;
+	ULONG_PTR NumbersOfSections = temp->FileHeader.NumberOfSections;
 	PIMAGE_SECTION_HEADER SectionHeader = IMAGE_FIRST_SECTION(temp);
-	for (ULONG i = 0; i < NumbersOfSections; ++i)
+	for (ULONG_PTR i = 0; i < NumbersOfSections; ++i)
 	{
-		ULONG StartAddress = SectionHeader->VirtualAddress;
-		ULONG EndAddress = StartAddress + SectionHeader->Misc.VirtualSize;
+		ULONG_PTR StartAddress = SectionHeader->VirtualAddress;
+		ULONG_PTR EndAddress = StartAddress + SectionHeader->Misc.VirtualSize;
 		if (Rva >= StartAddress && Rva <= EndAddress)
 			return Rva - StartAddress + SectionHeader->PointerToRawData;
 		++SectionHeader;
@@ -24,14 +29,14 @@ ULONG TurnRvaIntoRaw(PIMAGE_NT_HEADERS temp, ULONG_PTR Rva)
 PUCHAR GetFileContext()
 {
 	CHAR FileName[MAX_PATH];
-	cout << "ÊäÈëDLLÃû³Æ£º";
+	cout << "è¾“å…¥DLLåç§°ï¼š";
 	cin.getline(FileName, sizeof(FileName));
 
 	HANDLE hFile = CreateFileA(FileName, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
 	if (hFile == INVALID_HANDLE_VALUE)
 	{
-		cout << "´ò¿ª<<" << FileName << "Ê§°Ü£¡" << endl;
-		cout << "´íÎóÂëÊÇ£º" << GetLastError() << endl;
+		cout << "æ‰“å¼€<<" << FileName << "å¤±è´¥ï¼" << endl;
+		cout << "é”™è¯¯ç æ˜¯ï¼š" << GetLastError() << endl;
 		return NULL;
 	}
 
@@ -40,8 +45,8 @@ PUCHAR GetFileContext()
 	if (FileContent == NULL)
 	{
 		CloseHandle(hFile);
-		cout << "·ÖÅäÄÚ´æÊ§°Ü£¡" << endl;
-		cout << "´íÎóÂëÊÇ£º" << GetLastError() << endl;
+		cout << "åˆ†é…å†…å­˜å¤±è´¥ï¼" << endl;
+		cout << "é”™è¯¯ç æ˜¯ï¼š" << GetLastError() << endl;
 		return NULL;
 	}
 	ZeroMemory(FileContent, FileSize);
@@ -52,8 +57,8 @@ PUCHAR GetFileContext()
 	{
 		CloseHandle(hFile);
 		VirtualFree(FileContent, 0, MEM_RELEASE);
-		cout << "¶ÁÈ¡ÎÄ¼şÊ§°Ü£¡" << endl;
-		cout << "´íÎóÂëÊÇ£º" << GetLastError() << endl;
+		cout << "è¯»å–æ–‡ä»¶å¤±è´¥ï¼" << endl;
+		cout << "é”™è¯¯ç æ˜¯ï¼š" << GetLastError() << endl;
 		return NULL;
 	}
 
@@ -65,33 +70,33 @@ BOOL LoadPE(UCHAR* FileContent)
 	IMAGE_DOS_HEADER * DosHeader = (IMAGE_DOS_HEADER *)FileContent;
 	if (DosHeader->e_magic != IMAGE_DOS_SIGNATURE)
 	{
-		cout << "DOSÍ·²»Æ¥Åä£¡" << endl;
+		cout << "DOSå¤´ä¸åŒ¹é…ï¼" << endl;
 		return FALSE;
 	}
 
 	IMAGE_NT_HEADERS *NtHeader = (IMAGE_NT_HEADERS *)(FileContent + DosHeader->e_lfanew);
 	if (NtHeader->Signature != IMAGE_NT_SIGNATURE)
 	{
-		cout << "NTÍ·²»Æ¥Åä£¡" << endl;
+		cout << "NTå¤´ä¸åŒ¹é…ï¼" << endl;
 		return FALSE;
 	}
 
 	UCHAR *ImageBase = (UCHAR*)VirtualAlloc(NULL, NtHeader->OptionalHeader.SizeOfImage, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 	if (ImageBase == NULL)
 	{
-		cout << "·ÖÅäÄÚ´æÊ§°Ü£¡" << endl;
-		cout << "´íÎóÂëÊÇ£º" << GetLastError() << endl;
+		cout << "åˆ†é…å†…å­˜å¤±è´¥ï¼" << endl;
+		cout << "é”™è¯¯ç æ˜¯ï¼š" << GetLastError() << endl;
 		return FALSE;
 	}
 	ZeroMemory(ImageBase, NtHeader->OptionalHeader.SizeOfImage);
-	memcpy(ImageBase, FileContent, NtHeader->OptionalHeader.SizeOfHeaders);				//¿½±´Í·²¿
+	memcpy(ImageBase, FileContent, NtHeader->OptionalHeader.SizeOfHeaders);				//æ‹·è´å¤´éƒ¨
 
-	/*°´ÕÕÄÚ´æÖĞµÄÅÅĞò¿½±´Çø¿é*/
+	/*æŒ‰ç…§å†…å­˜ä¸­çš„æ’åºæ‹·è´åŒºå—*/
 	IMAGE_SECTION_HEADER * SectionHeader = IMAGE_FIRST_SECTION(NtHeader);
 	for (USHORT i = 0; i < NtHeader->FileHeader.NumberOfSections; ++i, ++SectionHeader)
 		memcpy(ImageBase + SectionHeader->VirtualAddress, FileContent + SectionHeader->PointerToRawData, SectionHeader->SizeOfRawData);
 
-	/*ÖÁ´Ë¸´ÖÆºÃÁËËùÓĞµÄ¶«Î÷£¬ÏÂÃæĞèÒª°Ñµ¼Èë±íÌæ»»ÁË*/
+	/*è‡³æ­¤å¤åˆ¶å¥½äº†æ‰€æœ‰çš„ä¸œè¥¿ï¼Œä¸‹é¢éœ€è¦æŠŠå¯¼å…¥è¡¨æ›¿æ¢äº†*/
 	if (NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size > 0)
 	{
 		IMAGE_IMPORT_DESCRIPTOR *ImportDescriptor = (IMAGE_IMPORT_DESCRIPTOR *)(ImageBase + NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
@@ -100,56 +105,56 @@ BOOL LoadPE(UCHAR* FileContent)
 			HMODULE hModule = LoadLibraryA((CHAR *)(ImageBase + ImportDescriptor->Name));
 			if (hModule == NULL)
 			{
-				cout << "LoadLibraryÊ§°Ü£¡" << endl;
+				cout << "LoadLibraryå¤±è´¥ï¼" << endl;
 				return FALSE;
 			}
 
 			IMAGE_THUNK_DATA *ThunkData = (IMAGE_THUNK_DATA *)(ImageBase + ImportDescriptor->FirstThunk);
 			for (; ThunkData->u1.Ordinal != 0; ThunkData++)
 			{
-				if (ThunkData->u1.Ordinal & 0x80000000)								//Èç¹ûÊ×Î»Îª1ÔòÊÇÎªĞòºÅÊäÈë£¬·ñÔòÊÇĞÕÃûÊäÈë
+				if (ThunkData->u1.Ordinal & 0x80000000)								//å¦‚æœé¦–ä½ä¸º1åˆ™æ˜¯ä¸ºåºå·è¾“å…¥ï¼Œå¦åˆ™æ˜¯å§“åè¾“å…¥
 				{
-					ThunkData->u1.Function = (ULONG)(GetProcAddress(hModule, (char*)(ThunkData->u1.Ordinal & 0x0000ffff)));
+					ThunkData->u1.Function = (ULONG_PTR)(GetProcAddress(hModule, (char*)(ThunkData->u1.Ordinal & 0x0000ffff)));
 				}
 				else
 				{
 					IMAGE_IMPORT_BY_NAME *ImportName = (IMAGE_IMPORT_BY_NAME *)(ImageBase + ThunkData->u1.AddressOfData);
-					ThunkData->u1.Function = (ULONG)(GetProcAddress(hModule, ImportName->Name));
+					ThunkData->u1.Function = (ULONG_PTR)(GetProcAddress(hModule, ImportName->Name));
 				}
 			}
 			FreeLibrary(hModule);
 		}
 	}
 
-	/*ºÃÁË£¬Èç½ñµ¼Èë±íÒ²ÒÑ¾­ĞŞ¸Ä½áÊøÁË£¬FirstThunkÀïÃæÈ«²¿¶¼ÊÇº¯ÊıµÄµØÖ·ÁË£¬²»ÔÙÊÇÊ²Ã´ÔÓÆßÔÓ°ËµÄ¹í¶«Î÷ÁË¡£*/
+	/*å¥½äº†ï¼Œå¦‚ä»Šå¯¼å…¥è¡¨ä¹Ÿå·²ç»ä¿®æ”¹ç»“æŸäº†ï¼ŒFirstThunké‡Œé¢å…¨éƒ¨éƒ½æ˜¯å‡½æ•°çš„åœ°å€äº†ï¼Œä¸å†æ˜¯ä»€ä¹ˆæ‚ä¸ƒæ‚å…«çš„é¬¼ä¸œè¥¿äº†ã€‚*/
 	if (NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size > 0)
 	{
-		//Õâ¸öÆ«ÒÆÁ¿ÊÇµ±Ç°PEÔÚÄÚ´æÖĞµÄÆ«ÒÆ¼õÈ¥PEÎÄ¼şÓ¦µ±¼ÓÔØµÄ»ùÖ·¡£
-		ULONG Offset = (ULONG)ImageBase - (ULONG)NtHeader->OptionalHeader.ImageBase;
+		//è¿™ä¸ªåç§»é‡æ˜¯å½“å‰PEåœ¨å†…å­˜ä¸­çš„åç§»å‡å»PEæ–‡ä»¶åº”å½“åŠ è½½çš„åŸºå€ã€‚
+		ULONG_PTR Offset = (ULONG_PTR)ImageBase - (ULONG_PTR)NtHeader->OptionalHeader.ImageBase;
 
 		IMAGE_BASE_RELOCATION *RelocationImage = (IMAGE_BASE_RELOCATION *)(ImageBase + NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress);
 		for (; RelocationImage->VirtualAddress != 0;)
 		{
-			/*ÕâÀï¾ßÌåÎªÊ²Ã´Ğ´
-			#define CountRelocationEntries(dwBlockSize)		\
-			(dwBlockSize -								\
-			sizeof(BASE_RELOCATION_BLOCK)) /			\
-			sizeof(BASE_RELOCATION_ENTRY)
-			¾Í²é¿´Õâ¸ö*/
-			ULONG NumberOfBlocks = (RelocationImage->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / 2;
-			USHORT * Block = (USHORT *)((CHAR*)RelocationImage + sizeof(IMAGE_BASE_RELOCATION));
+			/*è¿™é‡Œå…·ä½“ä¸ºä»€ä¹ˆå†™ï¼Œæ˜¯å› ä¸ºæœ€å‰é¢æœ‰ä¸€ä¸ªIMAGE_BASE_RELOCATIONï¼Œç„¶åç´§æ¥ç€çš„æ˜¯Nä¸ª2å­—èŠ‚çš„Block*/
+			ULONG_PTR NumberOfBlocks = (RelocationImage->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(BASE_RELOCATION_ENTRY);
+			BASE_RELOCATION_ENTRY * Block = (BASE_RELOCATION_ENTRY *)((CHAR*)RelocationImage + sizeof(IMAGE_BASE_RELOCATION));
 			for (USHORT i = 0; i < NumberOfBlocks; ++i, Block++)
 			{
-				USHORT Addr = *Block & 0x0fff;											//ÓÃµÍ12Î»×÷Îª±êÖ¾¡£
-				USHORT Sign = *Block >> 12;												//¸ßËÄÎ»×÷Îª±êÖ¾À´ÔËËã
-				if (Sign == 3)
+				USHORT Addr = Block->Offset;														//ç”¨ä½12ä½ä½œä¸ºæ ‡å¿—ã€‚
+				USHORT Sign = Block->Type;															//é«˜å››ä½ä½œä¸ºæ ‡å¿—æ¥è¿ç®—
+				if (Sign == IMAGE_REL_BASED_HIGHLOW)
 				{
-					ULONG AddressOffset = RelocationImage->VirtualAddress + Addr;				//BlockÊÇµ±Ç°Ò³ÃæÄÚ²¿µÄ±ãÒËµØÖ·£¬ËùÒÔ¼ÓÉÏµ±Ç°Ò³ÃæµÄÎ»ÖÃ¼´ÊÇ×ÜÆ«ÒÆµØÖ·¡£
-					*(ULONG *)(ImageBase + AddressOffset) += Offset;									//ÔÚPEµÄÄÚ´æÖĞÕÒµ½ÒªÖØ¶¨Î»µÄµØÖ·£¬È»ºó°ÑµØÖ·¼ÓÉÏÆ«²î¼´¿É¡£ÕâÀïĞèÒªÏÈÇ¿ÖÆ×ª»¯³ÉlongÀàĞÍ£¬ÈÃËûÕ¼ÓÃËÄ¸ö×Ö½Ú
+					ULONG_PTR AddressOffset = RelocationImage->VirtualAddress + Addr;				//Blockæ˜¯å½“å‰é¡µé¢å†…éƒ¨çš„ä¾¿å®œåœ°å€ï¼Œæ‰€ä»¥åŠ ä¸Šå½“å‰é¡µé¢çš„ä½ç½®å³æ˜¯æ€»åç§»åœ°å€ã€‚
+					*(ULONG_PTR *)(ImageBase + AddressOffset) += Offset;							//åœ¨PEçš„å†…å­˜ä¸­æ‰¾åˆ°è¦é‡å®šä½çš„åœ°å€ï¼Œç„¶åæŠŠåœ°å€åŠ ä¸Šåå·®å³å¯ã€‚è¿™é‡Œéœ€è¦å…ˆå¼ºåˆ¶è½¬åŒ–æˆlongç±»å‹ï¼Œè®©ä»–å ç”¨å››ä¸ªå­—èŠ‚
 				}
-				else if (Sign == 0)
+				else if (Sign == IMAGE_REL_BASED_ABSOLUTE)
 				{
-					//signÎª0µÄÄ£¿é½ö½öÊÇÎªÁË¶ÔÆëÄÚ´æ¡£
+					//signä¸º0çš„æ¨¡å—ä»…ä»…æ˜¯ä¸ºäº†å¯¹é½å†…å­˜ã€‚
+				}
+				else if (Sign == IMAGE_REL_BASED_DIR64)												//è¿™ä¸ªå€¼æ˜¯ä¸“é—¨åœ¨64ä½å¯æ‰§è¡Œæ–‡ä»¶ä¸Šä½¿ç”¨çš„ç±»å‹
+				{
+					ULONG_PTR AddressOffset = RelocationImage->VirtualAddress + Addr;				//Blockæ˜¯å½“å‰é¡µé¢å†…éƒ¨çš„ä¾¿å®œåœ°å€ï¼Œæ‰€ä»¥åŠ ä¸Šå½“å‰é¡µé¢çš„ä½ç½®å³æ˜¯æ€»åç§»åœ°å€ã€‚
+					*(ULONG_PTR *)(ImageBase + AddressOffset) += Offset;							//åœ¨PEçš„å†…å­˜ä¸­æ‰¾åˆ°è¦é‡å®šä½çš„åœ°å€ï¼Œç„¶åæŠŠåœ°å€åŠ ä¸Šåå·®å³å¯ã€‚è¿™é‡Œéœ€è¦å…ˆå¼ºåˆ¶è½¬åŒ–æˆlongç±»å‹ï¼Œè®©ä»–å ç”¨å››ä¸ªå­—èŠ‚
 				}
 			}
 			RelocationImage = (IMAGE_BASE_RELOCATION *)((char*)RelocationImage + RelocationImage->SizeOfBlock);
@@ -157,20 +162,20 @@ BOOL LoadPE(UCHAR* FileContent)
 	}
 
 	IMAGE_EXPORT_DIRECTORY *ExportDirectory = (IMAGE_EXPORT_DIRECTORY*)(ImageBase + NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
-	cout << "µ¼³öº¯Êı×ÜÊıÎª£º" << ExportDirectory->NumberOfFunctions << endl;
+	cout << "å¯¼å‡ºå‡½æ•°æ€»æ•°ä¸ºï¼š" << ExportDirectory->NumberOfFunctions << endl;
 
 	ULONG* ExportNameArry = (ULONG*)(ImageBase + ExportDirectory->AddressOfNames);
 	ULONG *ExportAddressArry = (ULONG*)(ImageBase + ExportDirectory->AddressOfFunctions);
 
 	for (USHORT i = 0; i < ExportDirectory->NumberOfFunctions; ++i)
-		cout << "µÚ" << i + 1 << "¸öº¯ÊıÎª£º" << (CHAR*)(ImageBase + *ExportNameArry) << endl;
+		cout << "ç¬¬" << i + 1 << "ä¸ªå‡½æ•°ä¸ºï¼š" << (CHAR*)(ImageBase + *ExportNameArry) << endl;
 	MSG_CALL t = (MSG_CALL)(ImageBase + *ExportAddressArry);
 	t();
 
 	DLLENTRY Entry = (DLLENTRY)(ImageBase + NtHeader->OptionalHeader.AddressOfEntryPoint);
 	Entry((HMODULE)ImageBase, DLL_PROCESS_ATTACH, 0);
 
-	//²»Ã÷¾õÀ÷£¬Õâ¸öImageBase²»ÄÜÊÍ·Å£¬ÊÍ·Å½ø³ÌÍË³öµÄÊ±ºò¾Í»á±Àµô
+	//ä¸æ˜è§‰å‰ï¼Œè¿™ä¸ªImageBaseä¸èƒ½é‡Šæ”¾ï¼Œé‡Šæ”¾è¿›ç¨‹é€€å‡ºçš„æ—¶å€™å°±ä¼šå´©æ‰
 	//VirtualFree(ImageBase, 0, MEM_RELEASE);
 
 	return TRUE;
